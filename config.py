@@ -51,7 +51,23 @@ SHORTLIST = {
     "trend_days": 7,
     "max": 5,                   # how many to show in the digest
 }
-ORGANIC_BOT_CAP = 30            # organic score below this also caps the total score at BOT_SCORE_CAP
+ORGANIC_BOT_CAP = 30
+
+# ---- Monthly picks: the end-of-month buying shortlist, fully automatic except checking X ----
+PICKS = {
+    "window_days": 14,          # look back this far
+    "min_consistency": 0.5,     # on the shortlist in at least half of the scans in the window...
+    "min_days": 3,              # ...and on at least this many different days
+    "max_trend_drop": 3,        # score may not have fallen more than this over the window
+    "max_pump_7d": 50,          # % — already up more than this in 7 days: don't chase
+    "max_dump_7d": -40,         # % — down more than this in 7 days: something is wrong
+    "max_insider_pct": 5,       # stricter than the scan gate (10%)
+    "max_single_wallet_pct": 5,
+    "max_creator_pct": 3,
+    "split_within_points": 5,   # if #2 is this close to #1, split the budget over both
+    "max_show": 3,
+}
+TIMEZONE = "Asia/Nicosia"       # for "last day of the month"            # organic score below this also caps the total score at BOT_SCORE_CAP
 
 # Majors, stablecoins and LSTs that show up in volume lists but aren't meme coins.
 EXCLUDE_SYMBOLS = {

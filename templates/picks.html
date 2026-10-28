@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Monthly picks · Meme Screener{% endblock %}
+{% block body %}
+<p><a href="/">← Screener</a></p>
+<h1>🎯 Monthly picks</h1>
+<p class="sub">From the scan of {{ r.scan_id or 'n/a' }} UTC · {{ r.total_days }} day(s) of shortlist history ·
+  sent to Telegram on the last day of each month (or send <code>/picks</code> to the bot anytime)</p>
+
+<div class="card stats">
+  A pick must: pass today's scan · be on the shortlist on ≥ {{ '%.0f'|format(p.min_consistency * 100) }}% of the last {{ p.window_days }} days (min {{ p.min_days }}) ·
+  score not down more than {{ p.max_trend_drop }} · 7-day move between {{ p.max_dump_7d }}% and +{{ p.max_pump_7d }}% ·
+  insiders ≤ {{ p.max_insider_pct }}% · no wallet &gt; {{ p.max_single_wallet_pct }}% · creator ≤ {{ p.max_creator_pct }}% · holders not connected.
+  <br><b>Your only manual step: open the coin's X account. Real people posting? If not, skip it.</b>
+</div>
+
+{% if r.total_days < p.min_days %}
+<div class="card"><b>Not enough history yet.</b> {{ r.total_days }} day(s) of shortlist data; picks become reliable after ~2 weeks of daily scans.</div>
+{% endif %}
+
+<h2>Suggested split of ${{ budget }}</h2>
+{% if not alloc %}
+<p class="sub">No coin passed every check, so skip buying this month.</p>
+{% endif %}
+{% for row, usd in alloc %}
+{% set m = row.metrics %}
+<div class="card">
+  <div class="row">
+    <div class="score s-good">${{ '%.0f'|format(usd) }}</div>
+    <div>
+      <div class="name">{{ row.symbol }} <small>{{ row.name }}</small></div>
+      <div class="stats">score {{ '%.0f'|format(row.score) }} · on shortlist {{ row.days_on }}/{{ row.total_days }} days
+        {% if row.trend is not none %}· score {{ '%+.0f'|format(row.trend) }}{% endif %}
+        · 7d {{ ('%+.0f%%'|format(row.change_7d)) if row.change_7d is not none else 'n/a' }}
+        · organic {{ '%.0f'|format(m.get('organic_score')) if m.get('organic_score') is not none else '?' }}
+        · mcap {{ row.mcap|money }}</div>
+    </div>
+    <div class="links">
+      {% if m.get('twitter_url') %}<a href="{{ m.twitter_url }}" target="_blank" rel="noopener"><b>Check X ↗</b></a>{% else %}<span class="fail">no X linked</span>{% endif %}
+      <a href="{{ m.get('dex_url') or 'https://dexscreener.com/solana/' ~ row.mint }}" target="_blank" rel="noopener">Chart</a>
+      <a href="https://rugcheck.xyz/tokens/{{ row.mint }}" target="_blank" rel="noopener">RugCheck</a>
+    </div>
+  </div>
+  <p class="stats" style="margin:10px 0 0">After buying, send the bot: <code>/buy {{ row.mint }} {{ '%.0f'|format(usd) }}</code></p>
+</div>
+{% endfor %}
+
+{% set others = r.picks[alloc|length:] %}
+{% if others %}
+<h2>Runners-up</h2>
+<table>{% for row in others[:5] %}<tr><td>{{ row.symbol }}</td><td>score {{ '%.0f'|format(row.score) }}</td>
+  <td>{{ row.days_on }}/{{ row.total_days }} days</td></tr>{% endfor %}</table>
+{% endif %}
+
+{% if r.rejected %}
+<h2>Shortlisted but not picked</h2>
+<table>
+  <tr><th>Coin</th><th>Score</th><th>Why not</th></tr>
+  {% for row in r.rejected[:15] %}
+  <tr><td>{{ row.symbol }}</td><td>{{ '%.0f'|format(row.score) }}</td><td class="fail">{{ row.why_not|join(' · ') }}</td></tr>
+  {% endfor %}
+</table>
+{% endif %}
+{% endblock %}

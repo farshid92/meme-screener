@@ -31,6 +31,10 @@ CREATE TABLE IF NOT EXISTS early_prices (
     mint TEXT NOT NULL, ts_ms REAL NOT NULL, price REAL, liquidity REAL, mcap REAL
 );
 CREATE INDEX IF NOT EXISTS idx_early_prices ON early_prices(mint, ts_ms);
+-- Which coins were on the shortlist in each scan (for the monthly picks)
+CREATE TABLE IF NOT EXISTS shortlist_log (
+    scan_id TEXT NOT NULL, mint TEXT NOT NULL, PRIMARY KEY (scan_id, mint)
+);
 CREATE TABLE IF NOT EXISTS rug_cache (
     mint TEXT PRIMARY KEY, fetched_at REAL NOT NULL, metrics TEXT NOT NULL
 );
@@ -238,6 +242,63 @@ def alert_sent(con, pid, kind):
 def mark_alert(con, pid, kind, ts):
     con.execute("INSERT OR IGNORE INTO alerts_sent VALUES (?,?,?)", (pid, kind, ts))
     con.commit()
+
+
+# ---- shortlist history / monthly picks ---------------------------------------
+
+def log_shortlist(con, scan_id, mints):
+    con.executemany("INSERT OR IGNORE INTO shortlist_log VALUES (?, ?)", [(scan_id, m) for m in mints])
+    # mark the scan as evaluated even if nothing was shortlisted
+    con.execute("INSERT OR IGNORE INTO shortlist_log VALUES (?, '')", (scan_id,))
+    con.commit()
+
+
+def logged_scans(con):
+    return {r["scan_id"] for r in con.execute("SELECT DISTINCT scan_id FROM shortlist_log")}
+
+
+def scan_ids(con, since=None):
+    q, a = "SELECT DISTINCT scan_id FROM scans", ()
+    if since:
+        q, a = q + " WHERE scan_id >= ?", (since,)
+    return [r["scan_id"] for r in con.execute(q + " ORDER BY scan_id", a)]
+
+
+def scan_rows(con, scan_id):
+    return [_decode(r) for r in con.execute("SELECT * FROM scans WHERE scan_id = ?", (scan_id,))]
+
+
+def shortlist_history(con, since):
+    """({mint: [scan_ids it was shortlisted in]}, [all evaluated scan_ids]) since `since`."""
+    hist, scans = {}, set()
+    for r in con.execute("SELECT scan_id, mint FROM shortlist_log WHERE scan_id >= ?", (since,)):
+        scans.add(r["scan_id"])
+        if r["mint"]:
+            hist.setdefault(r["mint"], []).append(r["scan_id"])
+    return hist, sorted(scans)
+
+
+def price_change(con, mint, days, now_iso):
+    """% price change over ~`days` from our own snapshots, or None without enough history."""
+    from datetime import datetime, timedelta
+    now = datetime.fromisoformat(now_iso)
+    target = (now - timedelta(days=days)).isoformat(timespec="seconds")
+    old = con.execute("SELECT price_usd, ts FROM prices WHERE mint = ? AND ts >= ? AND price_usd > 0 "
+                      "ORDER BY ts LIMIT 1", (mint, target)).fetchone()
+    new = con.execute("SELECT price_usd FROM prices WHERE mint = ? AND ts <= ? AND price_usd > 0 "
+                      "ORDER BY ts DESC LIMIT 1", (mint, now_iso)).fetchone()
+    if not old or not new:
+        return None
+    span = (now - datetime.fromisoformat(old["ts"])).total_seconds() / 86400
+    if span < days * 0.7:          # oldest snapshot too recent to say anything about a week
+        return None
+    return (new["price_usd"] / old["price_usd"] - 1) * 100
+
+
+def score_at_start(con, mint, since):
+    r = con.execute("SELECT score FROM scans WHERE mint = ? AND passed = 1 AND scan_id >= ? "
+                    "ORDER BY scan_id LIMIT 1", (mint, since)).fetchone()
+    return r["score"] if r else None
 
 
 # ---- early tracker ------------------------------------------------------------

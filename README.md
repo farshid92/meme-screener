@@ -88,6 +88,22 @@ It buys nothing.
 In the cloud this runs hourly automatically (see below). Locally, run it by hand when you like.
 You need ~30+ matured coins before reading anything into it, and a few hundred to be confident.
 
+## 🎯 Monthly picks (the buying decision, automated except X)
+
+On the **last day of every month** the daily scan sends a Telegram message with what to buy
+(send `/picks` to the bot anytime for the current version; also on the dashboard's 🎯 page):
+
+1. **Consistency:** on the shortlist on ≥ 50% of the last 14 days (min 3 days), score not falling.
+2. **No chasing:** not up more than 50% (or down more than 40%) in the last 7 days.
+3. **Stricter safety:** insiders ≤ 5%, no wallet > 5%, creator ≤ 3%, top holders not connected
+   (RugCheck's network data stands in for Bubblemaps, which has no free API).
+4. **Allocation:** the remaining monthly budget goes to #1, or is split over #1 and #2 when they're
+   within 5 points. If nothing passes, the message says to skip the month.
+
+Each pick comes with its X link (**the one check you do yourself**: real people posting?),
+chart and RugCheck links, and the exact `/buy` command to send after buying.
+All thresholds are in `PICKS` in `config.py`.
+
 ## ☁️ Running in the cloud (GitHub Actions)
 
 Nothing needs your laptop. `.github/workflows/run.yml` runs on GitHub's servers:

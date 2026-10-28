@@ -13,7 +13,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 import config
-from screener import net, scoring, shortlist, sources, storage, telegram
+from screener import net, picks, scoring, shortlist, sources, storage, telegram
 from screener.metrics import dex_metrics, jup_metrics, rug_metrics
 from screener.positions import build_digest, check_position
 
@@ -49,6 +49,7 @@ def main():
     ap.add_argument("--only", nargs="*", default=None, help="scan only these token mints")
     ap.add_argument("--db", default=config.DB_PATH)
     ap.add_argument("--no-telegram", action="store_true", help="don't send the digest or alerts")
+    ap.add_argument("--picks", action="store_true", help="also send the monthly picks now")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING,
@@ -133,6 +134,15 @@ def run_scan(args):
         else:
             sent = all([telegram.send(a, settings) for a in alerts] + [telegram.send(digest, settings)])
             print("Telegram: digest" + (f" + {len(alerts)} alert(s)" if alerts else "") + (" sent." if sent else " had errors."))
+            if picks.is_last_day_of_month() or args.picks:
+                telegram.send(monthly_picks_message(con), settings)
+                print("Telegram: monthly picks sent.")
+
+
+def monthly_picks_message(con):
+    month = datetime.now(timezone.utc).strftime("%Y-%m")
+    left = config.MONTHLY_BUDGET_USD - storage.spent_in_month(con, month)
+    return picks.message(picks.compute(con), max(0, left), picks.month_label())
 
 
 def position_alerts(con, scan_id, results, pairs_by_mint, include_deltas=True):
@@ -166,6 +176,7 @@ def make_digest(con, scan_id, results):
         if lp and lp["price_usd"]:
             prices[p["mint"]] = lp["price_usd"]
     short = shortlist.annotate(results, storage.score_trends(con, scan_id, config.SHORTLIST["trend_days"]), scan_id)
+    storage.log_shortlist(con, scan_id, [r["mint"] for r in short])
     print(f"Shortlist: {len(short)} coin(s)" + (": " + ", ".join(r["symbol"] for r in short[:10]) if short else ""))
     return build_digest(scan_id, results, storage.previous_scores(con, scan_id),
                         storage.passed_before(con, scan_id), open_pos, prices,

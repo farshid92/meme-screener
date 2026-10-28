@@ -8,9 +8,11 @@ import sys
 
 import app as dashboard
 
-PAGES = {"index.html": "/?view=shortlist", "all.html": "/?view=all", "early.html": "/early"}
+PAGES = {"index.html": "/?view=shortlist", "all.html": "/?view=all", "early.html": "/early",
+         "picks.html": "/picks"}
 LINKS = [('href="/?view=shortlist"', 'href="index.html"'), ('href="/?view=all"', 'href="all.html"'),
-         ('href="/early"', 'href="early.html"'), ('href="/"', 'href="index.html"')]
+         ('href="/early"', 'href="early.html"'), ('href="/picks"', 'href="picks.html"'),
+         ('href="/"', 'href="index.html"')]
 TOKEN_LINK = re.compile(r'href="/token/([A-Za-z0-9]+)"')
 
 

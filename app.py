@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from flask import Flask, abort, redirect, render_template, request, url_for
 
 import config
-from screener import early, shortlist, storage
+from screener import early, picks, shortlist, storage
 
 app = Flask(__name__)
 
@@ -155,6 +155,19 @@ def positions_action(pid, action):
     finally:
         con.close()
     return redirect(url_for("positions_page"))
+
+
+@app.route("/picks")
+def picks_page():
+    con = storage.connect(config.DB_PATH, config.PRIVATE_DB_PATH)
+    try:
+        result = picks.compute(con)
+    finally:
+        con.close()
+    alloc = picks.allocate(result["picks"], config.MONTHLY_BUDGET_USD)
+    return render_template("picks.html", r=result, alloc=alloc, p=config.PICKS,
+                           budget=config.MONTHLY_BUDGET_USD,
+                           last_day=picks.is_last_day_of_month())
 
 
 @app.route("/early")

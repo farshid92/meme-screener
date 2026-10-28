@@ -742,7 +742,7 @@ class TestCloud(unittest.TestCase):
             finally:
                 config.DB_PATH = orig
                 dashboard.app.config["STATIC"] = False
-            self.assertEqual(sorted(os.listdir(out)), [".nojekyll", "all.html", "early.html", "index.html"])
+            self.assertEqual(sorted(os.listdir(out)), [".nojekyll", "all.html", "early.html", "index.html", "picks.html"])
             html = open(os.path.join(out, "all.html"), encoding="utf-8").read()
             self.assertIn("GATO", html)
             self.assertIn('href="https://dexscreener.com/solana/GATOmint"', html)
@@ -797,5 +797,108 @@ class TestOldRows(unittest.TestCase):
                 for url in ("/", "/?view=all", "/early"):
                     self.assertEqual(c.get(url).status_code, 200, url)
                 self.assertIn("organic ?", c.get("/?view=all").data.decode())
+            finally:
+                config.DB_PATH = orig
+
+
+
+class TestPicks(unittest.TestCase):
+    def setUp(self):
+        from screener import picks
+        self.pk = picks
+
+    def coin(self, mint, symbol, **metrics):
+        r = scan.evaluate(GATO_PAIRS, lambda _: GATO_REPORT, NOW_MS, jup=GATO_JUP)
+        r.update(mint=mint, symbol=symbol)
+        r["metrics"] = {**r["metrics"], "mint": mint, "creator_pct": 0.5, **metrics}
+        return r
+
+    def test_check_rules(self):
+        r = self.coin("A", "AAA")
+        rank, why = self.pk.check(r, 10, 12, 2, 10)
+        self.assertEqual(why, [])
+        self.assertAlmostEqual(rank, r["score"] + 10 * 10 / 12)
+        self.assertEqual(self.pk.check(r, 2, 12, 0, 0)[1], ["on shortlist only 2/12 days"])
+        self.assertEqual(self.pk.check(r, 10, 12, -8, 0)[1], ["score falling (-8)"])
+        self.assertEqual(self.pk.check(r, 10, 12, 0, 80)[1], ["already up 80% in 7d (don't chase)"])
+        self.assertEqual(self.pk.check(r, 10, 12, 0, -60)[1], ["down 60% in 7d"])
+        self.assertEqual(self.pk.check(r, 10, 12, None, None)[1], [])           # unknown history is allowed
+        bad = self.coin("B", "BBB", insider_pct=8, max_single_pct=6.1, creator_pct=3.3, holder_correlation=True)
+        self.assertEqual(self.pk.check(bad, 10, 12, 0, 0)[1],
+                         ["insiders 8.0%", "one wallet 6.1%", "creator 3.3%", "top holders look connected"])
+
+    def test_allocate(self):
+        a, b, c = {"rank": 100}, {"rank": 97}, {"rank": 80}
+        self.assertEqual(self.pk.allocate([a, b], 20), [(a, 10), (b, 10)])
+        self.assertEqual(self.pk.allocate([a, c], 20), [(a, 20)])
+        self.assertEqual(self.pk.allocate([a], 15), [(a, 15)])
+        self.assertEqual(self.pk.allocate([], 20), [])
+        self.assertEqual(self.pk.allocate([a], 0), [])
+
+    def test_last_day_of_month(self):
+        from datetime import datetime, timezone
+        self.assertTrue(self.pk.is_last_day_of_month(datetime(2026, 10, 31, 7, 0, tzinfo=timezone.utc)))
+        self.assertFalse(self.pk.is_last_day_of_month(datetime(2026, 10, 30, 7, 0, tzinfo=timezone.utc)))
+        # 23:30 UTC on Oct 31 is already Nov 1 in Cyprus
+        self.assertFalse(self.pk.is_last_day_of_month(datetime(2026, 10, 31, 23, 30, tzinfo=timezone.utc)))
+
+    def _history_db(self, d):
+        """12 daily scans: AAA shortlisted every day (+ price up 10%), BBB 3 days, CCC every day but creator 3.3%."""
+        path = os.path.join(d, "t.db")
+        con = storage.connect(path)
+        for day in range(16, 28):
+            sid = f"2026-10-{day:02d}T08:00:00+00:00"
+            rows = [self.coin("AAA" + "x" * 40, "AAA"), self.coin("CCC" + "x" * 40, "CCC", creator_pct=3.3)]
+            if day >= 25:
+                rows.append(self.coin("BBB" + "x" * 40, "BBB"))
+            for r in rows:
+                storage.save(con, sid, r)
+                price = 0.001 * (1 + 0.1 * (day - 16) / 11) if r["symbol"] == "AAA" else 0.001
+                storage.save_price(con, r["mint"], sid, price, 200_000, 4e6)
+        return con
+
+    def test_compute_backfills_and_picks(self):
+        with tempfile.TemporaryDirectory() as d:
+            con = self._history_db(d)
+            try:
+                res = self.pk.compute(con)
+                self.assertEqual(res["total_days"], 12)              # backfilled from stored scans
+                self.assertEqual([r["symbol"] for r in res["picks"]], ["AAA"])
+                a = res["picks"][0]
+                self.assertEqual((a["days_on"], a["trend"]), (12, 0))
+                self.assertAlmostEqual(a["change_7d"], 10 * 7 / 11, delta=1.5)
+                why = {r["symbol"]: r["why_not"] for r in res["rejected"]}
+                self.assertEqual(why["BBB"], ["on shortlist only 3/12 days"])
+                self.assertEqual(why["CCC"], ["creator 3.3%"])
+                msg = self.pk.message(res, 20, "October 2026")
+                self.assertIn("1. <b>AAA</b> → buy <b>$20</b>", msg)
+                self.assertIn("on shortlist 12/12 days", msg)
+                self.assertIn("<code>/buy AAA", msg)
+                self.assertIn("Your check:", msg)
+                self.assertIn("Not picked: CCC (creator 3.3%); BBB (on shortlist only 3/12 days)", msg)
+                self.assertIn("Budget for this month is used up", self.pk.message(res, 0, "October 2026"))
+                self.assertIn("skip buying this month", self.pk.message(dict(res, picks=[]), 20, "October 2026"))
+            finally:
+                con.close()
+
+    def test_picks_page_and_bot_command(self):
+        import app as dashboard
+        import config
+        from screener import bot
+        with tempfile.TemporaryDirectory() as d:
+            con = self._history_db(d)
+            try:
+                reply = bot.handle(con, "/picks", lambda m: None, "2026-10-28")
+                self.assertIn("🎯 Monthly picks", reply)
+                self.assertIn("AAA", reply)
+            finally:
+                con.close()
+            orig = config.DB_PATH
+            config.DB_PATH = os.path.join(d, "t.db")
+            try:
+                html = dashboard.app.test_client().get("/picks").data.decode()
+                self.assertIn("$20", html)
+                self.assertIn("AAA", html)
+                self.assertIn("creator 3.3%", html)
             finally:
                 config.DB_PATH = orig

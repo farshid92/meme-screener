@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% macro score_class(s) %}{{ 's-good' if s >= 70 else ('s-mid' if s >= 50 else 's-bad') }}{% endmacro %}
 {% block body %}
-{% if not static %}<a class="nav" href="/positions">My positions →</a>{% endif %}<a class="nav" href="/early" style="margin-right:16px">🧪 Early tracker</a>
+{% if not static %}<a class="nav" href="/positions">My positions →</a>{% endif %}<a class="nav" href="/early" style="margin-right:16px">🧪 Early tracker</a><a class="nav" href="/picks" style="margin-right:16px">🎯 Monthly picks</a>
 <h1>Meme Screener</h1>
 {% if not scan_id %}
   <p class="sub">No scans yet. Run <code>python scan.py</code> first.</p>

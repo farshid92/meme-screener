@@ -4,6 +4,7 @@
   /initial <id>                                  you took your initial stake out
   /sold <id>                                     you sold everything
   /positions                                     list open positions
+  /picks                                         this month's buying picks
   /help
 
 Only messages from your own chat (TELEGRAM_CHAT_ID) are accepted.
@@ -12,6 +13,7 @@ import logging
 from datetime import datetime, timezone
 from html import escape
 
+import config
 from screener import storage, telegram
 
 log = logging.getLogger(__name__)
@@ -20,7 +22,8 @@ HELP = ("<b>Commands</b> (handled within the hour)\n"
         "/buy &lt;token address&gt; &lt;amount $&gt; [price]: record a buy\n"
         "/initial &lt;id&gt;: you took your initial stake out\n"
         "/sold &lt;id&gt;: you sold everything\n"
-        "/positions: list open positions")
+        "/positions: list open positions\n"
+        "/picks: this month's buying picks (sent automatically on the last day of the month)")
 
 
 def _fmt_pos(p, price=None):
@@ -76,6 +79,11 @@ def handle(con, text, price_fn, today=None):
         live = price_fn(p["mint"]) or (None, None, None)
         storage.update_position(con, pid, status="closed", close_price=live[0], closed_at=today)
         return f"✅ #{pid} closed" + (f" at {live[0]:.8g}" if live[0] else "")
+
+    if cmd == "/picks":
+        from screener import picks
+        left = config.MONTHLY_BUDGET_USD - storage.spent_in_month(con, today[:7])
+        return picks.message(picks.compute(con), max(0, left), picks.month_label())
 
     if cmd == "/positions":
         open_pos = storage.positions(con, "open")
