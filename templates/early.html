@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Early tracker · Meme Screener{% endblock %}
+{% macro pct(v) %}{{ '%.0f%%'|format(v * 100) }}{% endmacro %}
+{% macro row(label, s) %}
+  <tr><td>{{ label }}</td><td>{{ s.n }}{% if s.n < 30 %} <span style="color:var(--dim)">(few)</span>{% endif %}</td>
+      <td>{{ pct(s.hit2) }}</td><td>{{ pct(s.hit5) }}</td><td class="s-good">{{ pct(s.hit10) }}</td>
+      <td class="s-bad">{{ pct(s.dead) }}</td><td>{{ '%.2fx'|format(s.median_final) }}</td></tr>
+{% endmacro %}
+{% block body %}
+<p><a href="/">← Screener</a></p>
+<h1>🧪 Early tracker</h1>
+<p class="sub">Paper only: nothing is bought. {{ total }} young coins tracked · {{ n }} have a full {{ '%g'|format(days) }}-day outcome {% if not static %}·
+  <a href="/early?days=1">1d</a> · <a href="/early?days=3">3d</a> · <a href="/early?days=7">7d</a>{% endif %}</p>
+
+{% if n < 30 %}
+<div class="card"><b>Not enough data yet.</b> Keep the hourly tracker running. You need at least ~30 coins with a full
+  {{ '%g'|format(days) }}-day outcome before any pattern below means something, and a few hundred to be confident.</div>
+{% endif %}
+
+{% if baseline %}
+<h2>Did early signals predict the outcome?</h2>
+<p class="stats">Compare each bucket to the baseline. A signal helps only if a bucket is clearly better <i>and</i> has enough coins.
+  Peaks are from hourly snapshots, so short spikes are missed.</p>
+<table>
+  <tr><th></th><th>n</th><th>≥2x</th><th>≥5x</th><th>≥10x</th><th>dead</th><th>median end</th></tr>
+  {{ row('ALL (baseline)', baseline) }}
+  {% for name, groups in table %}
+    <tr><th colspan="7" style="padding-top:16px;color:var(--text)">{{ name }}</th></tr>
+    {% for label, s in groups %}{{ row(label, s) }}{% endfor %}
+  {% endfor %}
+</table>
+{% endif %}
+
+<h2>Recently tracked</h2>
+{% if recent %}
+<table>
+  <tr><th>Coin</th><th>Seen</th><th>At sight</th><th>Organic</th><th>Insiders</th><th>Dev mints</th><th>Peak</th><th>Now</th></tr>
+  {% for c in recent %}
+  <tr>
+    <td><a href="https://dexscreener.com/solana/{{ c.mint }}" target="_blank" rel="noopener">{{ c.symbol or c.mint[:6] }}</a></td>
+    <td>{{ '%.1f'|format(c.age_d) }}d ago</td>
+    <td>{{ c.signals.mcap|money }} · {{ '%.0f'|format(c.signals.age_h or 0) }}h old</td>
+    <td>{{ '%.0f'|format(c.signals.get('organic_score')) if c.signals.get('organic_score') is not none else '?' }}</td>
+    <td>{{ '%.1f%%'|format(c.signals.get('insider_pct')) if c.signals.get('insider_pct') is not none else '?' }}</td>
+    <td>{{ c.signals.get('dev_mints') if c.signals.get('dev_mints') is not none else '?' }}</td>
+    <td class="{{ 's-good' if c.peak_x and c.peak_x >= 2 }}">{{ '%.1fx'|format(c.peak_x) if c.peak_x else '?' }}</td>
+    <td class="{{ 's-good' if c.now_x and c.now_x >= 1 else 's-bad' }}">{{ '%.2fx'|format(c.now_x) if c.now_x is not none else '?' }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="sub">Nothing tracked yet. Run <code>python early_track.py</code> (and schedule <code>run_hourly.bat</code>).</p>
+{% endif %}
+{% endblock %}

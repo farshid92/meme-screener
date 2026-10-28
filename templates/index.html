@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% macro score_class(s) %}{{ 's-good' if s >= 70 else ('s-mid' if s >= 50 else 's-bad') }}{% endmacro %}
+{% block body %}
+{% if not static %}<a class="nav" href="/positions">My positions →</a>{% endif %}<a class="nav" href="/early" style="margin-right:16px">🧪 Early tracker</a>
+<h1>Meme Screener</h1>
+{% if not scan_id %}
+  <p class="sub">No scans yet. Run <code>python scan.py</code> first.</p>
+{% else %}
+  <p class="sub">Last scan {{ scan_id }} UTC · {{ total_passed }} passed · {{ failed|length }} failed gates
+    {% if passed|length != total_passed %} · showing {{ passed|length }}{% endif %}</p>
+
+  <div class="tabs">
+    <a href="/?view=shortlist" class="{{ 'on' if f.view == 'shortlist' }}">⭐ Shortlist ({{ n_short }})</a>
+    <a href="/?view=all" class="{{ 'on' if f.view == 'all' }}">All passing ({{ total_passed }})</a>
+  </div>
+  {% if f.view == 'shortlist' %}
+  <p class="stats" style="margin:-6px 0 14px">Score ≥ {{ rules.min_score }} · organic ≥ {{ rules.min_organic }} · holders not shrinking ·
+    score not falling more than {{ rules.max_trend_drop }} pts (once 3+ days of history exist)</p>
+  {% endif %}
+
+  {% if not static %}
+  <form class="filters" method="get">
+    <input type="hidden" name="view" value="{{ f.view }}">
+    <label>Min score <input name="min_score" type="number" step="1" value="{{ f.min_score if f.min_score is not none else '' }}"></label>
+    <label>Mcap ($M) <input name="min_mcap" type="number" step="0.1" placeholder="min" value="{{ f.min_mcap if f.min_mcap is not none else '' }}">
+      – <input name="max_mcap" type="number" step="0.1" placeholder="max" value="{{ f.max_mcap if f.max_mcap is not none else '' }}"></label>
+    <label>Min age (days) <input name="min_age" type="number" step="1" value="{{ f.min_age if f.min_age is not none else '' }}"></label>
+    <label>Sort <select name="sort">
+      {% for key, label in [('score','Score'),('change','Score change'),('mcap','Market cap'),('age','Newest')] %}
+      <option value="{{ key }}" {{ 'selected' if f.sort == key }}>{{ label }}</option>
+      {% endfor %}
+    </select></label>
+    <button type="submit">Apply</button> <a href="/?view={{ f.view }}">Reset</a>
+  </form>
+  {% endif %}
+
+  {% if not passed %}
+  <p class="sub">{% if f.view == 'shortlist' %}No coin meets every shortlist rule today. That's a valid answer: nothing to buy.
+    <a href="/?view=all">See all passing coins</a>.{% else %}No coins match these filters.{% endif %}</p>
+  {% endif %}
+  {% for r in passed %}
+  <div class="card">
+    <div class="row">
+      <div class="score {{ score_class(r.score) }}">{{ '%.0f'|format(r.score) }}
+        <div class="delta">{% if r.delta is none %}new{% elif r.delta > 0 %}▲ {{ '%.0f'|format(r.delta) }}{% elif r.delta < 0 %}▼ {{ '%.0f'|format(-r.delta) }}{% else %}–{% endif %}</div>
+      </div>
+      <div>
+        <div class="name">{% if r.shortlisted %}⭐ {% endif %}<a href="/token/{{ r.mint }}">{{ r.symbol }}</a> <small>{{ r.name }}</small></div>
+        <div class="stats">mcap {{ r.mcap|money }} · liq {{ r.liquidity|money }} · {{ r.holders or '?' }} holders · {{ '%.1f'|format((r.metrics.age_hours or 0)/24) }}d old</div>
+        <div class="stats">
+          organic {{ '%.0f'|format(r.metrics.get('organic_score')) if r.metrics.get('organic_score') is not none else '?' }}
+          · holders 24h {{ '%+.1f%%'|format(r.metrics.get('holder_change_24h')) if r.metrics.get('holder_change_24h') is not none else '?' }}
+          {% if r.trend is not none and r.trend_days >= 1 %}· {{ '%.0f'|format(r.trend_days) }}d trend {{ '%+.0f'|format(r.trend) }}{% endif %}
+          {% if not r.shortlisted and r.shortlist_misses %}<span style="color:var(--dim)"> · not shortlisted: {{ r.shortlist_misses|join(', ') }}</span>{% endif %}
+        </div>
+      </div>
+      <div class="links">
+        <a href="{{ r.metrics.dex_url }}" target="_blank" rel="noopener">DexScreener</a>
+        <a href="https://rugcheck.xyz/tokens/{{ r.mint }}" target="_blank" rel="noopener">RugCheck</a>
+        {% if r.metrics.twitter_url %}<a href="{{ r.metrics.twitter_url }}" target="_blank" rel="noopener">X</a>{% endif %}
+      </div>
+    </div>
+    <div class="bars">
+      {% for cat, max_pts in weights.items() %}
+      {% set pts = r.breakdown.get(cat, 0) %}
+      <div class="bar">{{ cat|capitalize }} {{ '%.0f'|format(pts) }}/{{ max_pts }}
+        <div class="track"><div class="fill" style="width:{{ (pts / max_pts * 100)|round }}%"></div></div>
+      </div>
+      {% endfor %}
+    </div>
+    {% if r.warnings %}<ul class="warn">{% for w in r.warnings %}<li>{{ w }}</li>{% endfor %}</ul>{% endif %}
+  </div>
+  {% endfor %}
+
+  {% if failed %}
+  <details>
+    <summary>{{ failed|length }} coins failed the hard gates</summary>
+    <table>
+      <tr><th>Coin</th><th>Why it failed</th></tr>
+      {% for r in failed %}
+      <tr><td><a href="https://rugcheck.xyz/tokens/{{ r.mint }}" target="_blank" rel="noopener">{{ r.symbol }}</a></td>
+          <td class="fail">{{ r.gate_reasons|join(' · ') }}</td></tr>
+      {% endfor %}
+    </table>
+  </details>
+  {% endif %}
+{% endif %}
+{% endblock %}

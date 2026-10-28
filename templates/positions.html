@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Positions · Meme Screener{% endblock %}
+{% block body %}
+<p><a href="/">← Screener</a></p>
+<h1>My positions</h1>
+{% set pct = (spent / budget * 100) if budget else 0 %}
+<p class="sub">Budget {{ month }}: ${{ '%.0f'|format(spent) }} / ${{ '%.0f'|format(budget) }}
+  {% if spent > budget %}<span class="fail"> · over budget</span>{% endif %}
+  · Open: ${{ '%.0f'|format(invested) }} in → ${{ '%.0f'|format(value) }} now</p>
+<div class="track" style="max-width:320px;margin:-8px 0 20px"><div class="fill" style="width:{{ [pct, 100]|min|round }}%;{{ 'background:var(--bad)' if spent > budget }}"></div></div>
+
+{% if error %}<p class="fail">{{ error }}</p>{% endif %}
+
+<div class="card">
+  <form class="filters" method="post" action="/positions/add" style="margin:0">
+    <label>Token <input name="mint" list="coins" required placeholder="paste address" value="{{ prefill }}" style="width:260px"></label>
+    <datalist id="coins">{% for r in suggestions %}<option value="{{ r.mint }}">{{ r.symbol }} ({{ '%.0f'|format(r.score) }})</option>{% endfor %}</datalist>
+    <label>Amount ($) <input name="amount_usd" type="number" step="0.01" min="0.01" required></label>
+    <label>Buy price <input name="buy_price" type="number" step="any" placeholder="auto" style="width:110px"></label>
+    <label>Date <input name="opened_at" type="date" value="{{ today }}" style="width:140px"></label>
+    <button type="submit">Add buy</button>
+  </form>
+  <p class="stats" style="margin:8px 0 0">Leave buy price empty to use the latest scanned price. Alerts arrive on Telegram after each scan.</p>
+</div>
+
+{% if rows %}
+<table>
+  <tr><th>Coin</th><th>Bought</th><th>In</th><th>Now</th><th>Multiple</th><th>Status</th><th></th></tr>
+  {% for p in rows %}
+  <tr>
+    <td><a href="/token/{{ p.mint }}">{{ p.symbol or p.mint[:6] }}</a></td>
+    <td>{{ p.opened_at }}</td>
+    <td>${{ '%.2f'|format(p.amount_usd) }}</td>
+    <td>{{ ('$%.2f'|format(p.value)) if p.value is not none else '?' }}</td>
+    <td class="{{ 's-good' if p.x and p.x >= 1 else ('s-bad' if p.x else '') }}">
+      {{ ('%.2fx'|format(p.x)) if p.x else '?' }}
+      {% if p.status == 'open' and p.x and p.x >= take_profit_x and not p.initial_taken %} 💰{% endif %}
+    </td>
+    <td>{{ p.status }}{% if p.initial_taken %} · initial out{% endif %}{% if p.closed_at %} {{ p.closed_at }}{% endif %}</td>
+    <td>
+      {% if p.status == 'open' %}
+        {% if not p.initial_taken %}
+        <form method="post" action="/positions/{{ p.id }}/initial" style="display:inline"><button>Took initial out</button></form>
+        {% endif %}
+        <form method="post" action="/positions/{{ p.id }}/close" style="display:inline"><button>Sold all</button></form>
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="sub">No positions yet. After you buy on your phone, add it here so the screener can watch it.</p>
+{% endif %}
+{% endblock %}

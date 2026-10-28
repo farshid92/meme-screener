@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.db
+telegram.json
+scan_log.txt
+early_log.txt
+data/
+site/
+private.db

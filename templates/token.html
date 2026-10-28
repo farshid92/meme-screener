@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}{{ latest.symbol }} · Meme Screener{% endblock %}
+{% block body %}
+<p><a href="/">← All coins</a></p>
+<h1>{{ latest.symbol }} <small style="color:var(--dim);font-weight:400">{{ latest.name }}</small></h1>
+<p class="sub">{{ latest.mint }} · <a href="/positions?mint={{ latest.mint }}">I bought this →</a></p>
+
+<h2>Score history</h2>
+<table>
+  <tr><th>Scan (UTC)</th><th>Score</th><th>Price</th><th>Mcap</th><th>Liquidity</th><th>Holders</th><th>Notes</th></tr>
+  {% for r in history|reverse %}
+  <tr>
+    <td>{{ r.scan_id }}</td>
+    <td>{{ '%.0f'|format(r.score) if r.passed else 'FAIL' }}</td>
+    <td>${{ '%.8g'|format(r.price_usd or 0) }}</td>
+    <td>{{ r.mcap|money }}</td>
+    <td>{{ r.liquidity|money }}</td>
+    <td>{{ r.holders or '?' }}</td>
+    <td class="{{ '' if r.passed else 'fail' }}">{{ (r.warnings if r.passed else r.gate_reasons)|join(' · ') }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endblock %}
