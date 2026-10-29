@@ -50,10 +50,22 @@ def main():
     ap.add_argument("--db", default=config.DB_PATH)
     ap.add_argument("--no-telegram", action="store_true", help="don't send the digest or alerts")
     ap.add_argument("--picks", action="store_true", help="also send the monthly picks now")
+    ap.add_argument("--if-due", action="store_true",
+                    help="only scan if today's scan hasn't happened yet (for frequent schedulers)")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING,
                         format="%(levelname)s %(message)s")
+    if args.if_due:
+        con = storage.connect(args.db, config.PRIVATE_DB_PATH)
+        try:
+            last, _ = storage.latest_scan(con)
+        finally:
+            con.close()
+        due, why = scan_due(last)
+        print(f"Daily scan {'due' if due else 'not due'}: {why}")
+        if not due:
+            return
     if not net.wait_for_network():
         print("No network after 5 minutes; giving up.")
         raise SystemExit(1)
@@ -63,6 +75,22 @@ def main():
         if not args.no_telegram:
             telegram.send(f"⚠️ Daily meme scan failed: {escape(type(e).__name__)}: {escape(str(e)[:300])}")
         raise
+
+
+def scan_due(last_scan_id, now=None):
+    """One scan per day, on the first run after DAILY_SCAN_HOUR local time.
+    Works no matter which (if any) of the scheduled runs actually fire."""
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo(config.TIMEZONE)
+    now = (now or datetime.now(timezone.utc)).astimezone(tz)
+    if not last_scan_id:
+        return True, "no scan yet"
+    last = datetime.fromisoformat(last_scan_id).astimezone(tz)
+    if last.date() >= now.date():
+        return False, f"already scanned today at {last:%H:%M}"
+    if now.hour < config.DAILY_SCAN_HOUR:
+        return False, f"waiting until {config.DAILY_SCAN_HOUR}:00 local"
+    return True, f"last scan {last:%Y-%m-%d %H:%M}"
 
 
 def run_scan(args):

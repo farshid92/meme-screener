@@ -902,3 +902,16 @@ class TestPicks(unittest.TestCase):
                 self.assertIn("creator 3.3%", html)
             finally:
                 config.DB_PATH = orig
+
+
+class TestScanDue(unittest.TestCase):
+    def test_scan_due(self):
+        from datetime import datetime, timezone
+        at = lambda s: datetime.fromisoformat(s).replace(tzinfo=timezone.utc)
+        # Cyprus is UTC+2 in winter: 06:10 UTC = 08:10 local
+        self.assertEqual(scan.scan_due(None)[0], True)
+        self.assertEqual(scan.scan_due("2026-10-28T10:43:05+00:00", at("2026-10-29T05:30:00"))[0], False)  # 07:30 local
+        self.assertEqual(scan.scan_due("2026-10-28T10:43:05+00:00", at("2026-10-29T06:10:00"))[0], True)
+        self.assertEqual(scan.scan_due("2026-10-29T06:10:00+00:00", at("2026-10-29T15:00:00")),
+                         (False, "already scanned today at 08:10"))
+        self.assertEqual(scan.scan_due("2026-10-27T10:00:00+00:00", at("2026-10-29T21:00:00"))[0], True)  # missed days

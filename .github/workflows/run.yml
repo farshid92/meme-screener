@@ -2,8 +2,9 @@ name: meme-screener
 
 on:
   schedule:
-    - cron: "23 * * * *"   # hourly: Telegram commands, early tracker, price alerts for your positions
-    - cron: "47 6 * * *"   # daily full scan + digest, 08:47 in Cyprus (GitHub cron is UTC and can run a bit late)
+    - cron: "23 * * * *"   # hourly: Telegram commands, early tracker, price alerts for your positions.
+                           # The daily scan runs inside the first run after 08:00 Cyprus time (scan.py --if-due),
+                           # so it still happens when GitHub skips scheduled runs.
   workflow_dispatch:
     inputs:
       scan:
@@ -53,9 +54,9 @@ jobs:
         continue-on-error: true      # a failed hour must not block the daily scan or saving
         run: python hourly.py
 
-      - name: Daily scan
-        if: github.event.schedule == '47 6 * * *' || inputs.scan
-        run: python scan.py
+      - name: Daily scan (if due)
+        run: |
+          if [ "${{ inputs.scan }}" = "true" ]; then python scan.py; else python scan.py --if-due; fi
 
       - name: Save database
         if: always() && steps.load.outcome == 'success'

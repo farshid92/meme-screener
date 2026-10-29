@@ -67,7 +67,8 @@ PICKS = {
     "split_within_points": 5,   # if #2 is this close to #1, split the budget over both
     "max_show": 3,
 }
-TIMEZONE = "Asia/Nicosia"       # for "last day of the month"            # organic score below this also caps the total score at BOT_SCORE_CAP
+TIMEZONE = "Asia/Nicosia"       # for "last day of the month" and the daily scan time
+DAILY_SCAN_HOUR = 8             # daily scan runs on the first cloud run after 08:00 local time            # organic score below this also caps the total score at BOT_SCORE_CAP
 
 # Majors, stablecoins and LSTs that show up in volume lists but aren't meme coins.
 EXCLUDE_SYMBOLS = {
